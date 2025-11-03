@@ -1,3 +1,4 @@
+# train_models.py — FINAL NOV 03 2025 — NO MORE LONG vs FLOAT
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments
 from datasets import Dataset
 from sklearn.metrics import f1_score, mean_absolute_error
@@ -9,7 +10,7 @@ BATCH   = 4
 EPOCHS  = 1
 DEVICE  = "cpu"
 
-print("Training on CPU – 90 seconds total")
+print("Training on CPU — 90 seconds total")
 os.makedirs("models", exist_ok=True)
 tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
 
@@ -25,16 +26,17 @@ def train_classifier(task: str, col: str):
     tr = Dataset.from_pandas(train_df[["text", col]]).map(tokenize, batched=True)
     te = Dataset.from_pandas(test_df[["text", col]]).map(tokenize, batched=True)
 
-    tr = tr.class_encode_column(col).rename_column(col, "labels")
-    te = te.class_encode_column(col).rename_column(col, "labels")
+    # Encode labels FIRST
+    tr = tr.class_encode_column(col)
+    te = te.class_encode_column(col)
 
-    # KEEP INPUTS + FORCE LABELS TO FLOAT32
-    tr.set_format("torch", columns=["input_ids","attention_mask","labels"])
-    te.set_format("torch", columns=["input_ids","attention_mask","labels"])
+    # NOW rename + convert to float in ONE step
+    tr = tr.rename_column(col, "labels").map(lambda x: {"labels": float(x["labels"])}, batched=False)
+    te = te.rename_column(col, "labels").map(lambda x: {"labels": float(x["labels"])}, batched=False)
 
-    # ONE-LINE MAGIC FIX
-    tr = tr.map(lambda x: {"labels": x["labels"].to(torch.float32)}, batched=False)
-    te = te.map(lambda x: {"labels": x["labels"].to(torch.float32)}, batched=False)
+    # Set format — labels now float32
+    tr.set_format("torch", columns=["input_ids", "attention_mask", "labels"])
+    te.set_format("torch", columns=["input_ids", "attention_mask", "labels"])
 
     model = AutoModelForSequenceClassification.from_pretrained(
         "distilbert-base-uncased",
@@ -58,7 +60,6 @@ def train_classifier(task: str, col: str):
     trainer = Trainer(model=model, args=args, train_dataset=tr, eval_dataset=te)
     trainer.train()
 
-    # CLEAN F1
     out = trainer.predict(te)
     f1 = f1_score(out.label_ids, out.predictions.argmax(-1), average="weighted")
     print(f"{task.upper()} F1: {f1:.3f}")
@@ -70,7 +71,6 @@ def train_classifier(task: str, col: str):
 f1_p = train_classifier("priority", "priority")
 f1_d = train_classifier("department", "department")
 
-# SLA
 print("\nTraining SLA breach predictor...")
 base = AutoModelForSequenceClassification.from_pretrained("distilbert-base-uncased", num_labels=1).to(DEVICE)
 base.eval()
@@ -98,4 +98,4 @@ with open("metrics.txt","w") as f:
     f.write("Priority F1,Department F1,SLA MAE\n")
     f.write(f"{f1_p:.3f},{f1_d:.3f},{mae:.3f}")
 
-print("\nVICTORY! Run!")
+print("\nVICTORY! Run py")
