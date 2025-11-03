@@ -210,3 +210,7 @@ models/
 *.pt
 *.safetensors
 *.pkl
+models/
+*.pt
+*.safetensors
+*.pkl
