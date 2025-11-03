@@ -26,17 +26,19 @@ def train_classifier(task: str, col: str):
     tr = Dataset.from_pandas(train_df[["text", col]]).map(tokenize, batched=True)
     te = Dataset.from_pandas(test_df[["text", col]]).map(tokenize, batched=True)
 
-    # Encode labels FIRST: This converts string/categorical labels to integers (Long)
+    # Encode labels FIRST
     tr = tr.class_encode_column(col)
     te = te.class_encode_column(col)
 
-    # NOW rename to "labels" — DO NOT convert to float (this was the error!)
+    # Rename to "labels"
     tr = tr.rename_column(col, "labels")
     te = te.rename_column(col, "labels")
 
-    # Set format — labels remain Long (correct for classification)
-    tr.set_format("torch", columns=["input_ids", "attention_mask", "labels"])
-    te.set_format("torch", columns=["input_ids", "attention_mask", "labels"])
+    # Set format WITHOUT including labels - let the Trainer handle it
+    tr.set_format("torch", columns=["input_ids", "attention_mask"])
+    te.set_format("torch", columns=["input_ids", "attention_mask"])
+    
+    # Don't convert labels column to torch format - keep them as they are
 
     model = AutoModelForSequenceClassification.from_pretrained(
         "distilbert-base-uncased",
@@ -53,7 +55,7 @@ def train_classifier(task: str, col: str):
         load_best_model_at_end=True,
         logging_steps=100,
         report_to=[],
-        remove_unused_columns=False,
+        remove_unused_columns=False,  # Keep this False
         dataloader_pin_memory=False,
     )
 
@@ -61,7 +63,6 @@ def train_classifier(task: str, col: str):
     trainer.train()
 
     out = trainer.predict(te)
-    # The labels for f1_score need to be an iterable of class indices
     f1 = f1_score(out.label_ids, out.predictions.argmax(-1), average="weighted")
     print(f"{task.upper()} F1: {f1:.3f}")
 
