@@ -39,19 +39,17 @@ print(f"Loaded {len(train_df)} train, {len(test_df)} test")
 # ==========================
 def train_classifier(task: str, label_col: str):
     print(f"\nTraining {task.upper()}...")
+        # FIX: rename FIRST, then format
+    train_ds = train_ds.class_encode_column(col)
+    train_ds = train_ds.rename_column(col, 'labels')
+    test_ds  = test_ds.class_encode_column(col)
+    test_ds  = test_ds.rename_column(col, 'labels')
 
-    train_ds = Dataset.from_pandas(train_df[['text', label_col]]).map(tokenize, batched=True)
-    test_ds  = Dataset.from_pandas(test_df[['text', label_col]]).map(tokenize, batched=True)
-
-    # Encode labels as INT → then cast to FLOAT later
-    # FIX: input_ids = Long, labels = Float
     train_ds.set_format('torch',
                         columns=['input_ids', 'attention_mask', 'labels'],
-                        output_all_columns=True,
                         dtype={'input_ids': torch.long, 'attention_mask': torch.long, 'labels': torch.float32})
     test_ds.set_format('torch',
                        columns=['input_ids', 'attention_mask', 'labels'],
-                       output_all_columns=True,
                        dtype={'input_ids': torch.long, 'attention_mask': torch.long, 'labels': torch.float32})
 
     # CRITICAL FIX: force torch + float labels
