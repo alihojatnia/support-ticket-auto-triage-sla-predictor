@@ -5,9 +5,9 @@ from sklearn.linear_model import LogisticRegression
 import pandas as pd, torch, numpy as np, os, joblib
 
 # SETTINGS
-MAX_LEN = 128
-BATCH = 8
-EPOCHS = 2
+MAX_LEN = 64
+BATCH = 4
+EPOCHS = 1
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {DEVICE}")
 
