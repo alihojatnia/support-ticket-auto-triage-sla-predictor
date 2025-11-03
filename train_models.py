@@ -87,7 +87,7 @@ def feats(df):
 
 X_tr = feats(train_df)
 X_te = feats(test_df)
-reg = LogisticRegression(max_iter=1000).fit(X_tr, (train_df["sla_breach_prob"]>0.5).astype(int))
+reg = LogisticRegression(max_iter=10).fit(X_tr, (train_df["sla_breach_prob"]>0.5).astype(int))
 mae = mean_absolute_error(test_df["sla_breach_prob"], reg.predict_proba(X_te)[:,1])
 print(f"SLA MAE: {mae:.3f}")
 
