@@ -59,7 +59,8 @@ def train_classifier(task, col):
     trainer.train()
 
     preds = trainer.predict(test_ds).predictions.argmax(-1)
-    f1 = f1_score(test_ds["labels"].numpy(), preds, average="weighted")
+
+    f1 = f1_score(test_ds["labels"], preds, average="weighted")
     print(f"{task.upper()} F1: {f1:.3f}")
 
     model.save_pretrained(f"models/{task}")
