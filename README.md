@@ -87,7 +87,7 @@ URGENT: server down, losing $10k/min, fix NOW or we sue
 **You get:**
 - **Priority:** P0  
 - **Department:** Tech  (2)
-- **SLA Risk:** 94%  (# taringin time was short :))))
+- **SLA Risk:** 94%  (# training time was short :))))
 
 ---
 
