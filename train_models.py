@@ -1,4 +1,4 @@
-# train_models.py — CLEAN, FINAL, UNBREAKABLE 2025
+# train_models.py
 import os
 import numpy as np
 import pandas as pd
@@ -9,14 +9,10 @@ from sklearn.metrics import f1_score
 from sklearn.linear_model import LogisticRegression
 import joblib
 
-# ================================
-# 1. CREATE FOLDERS
-# ================================
+
 os.makedirs("models", exist_ok=True)
 
-# ================================
-# 2. LOAD TINY PERFECT DATA
-# ================================
+
 url = "https://bit.ly/zendesk-tiny-compatible"
 df = pd.read_csv(url)
 df = df.sample(frac=1, random_state=42).reset_index(drop=True)
@@ -26,18 +22,14 @@ test_df  = df.iloc[150:]
 
 print(f"Loaded {len(train_df)} train | {len(test_df)} test tickets")
 
-# ================================
-# 3. TOKENIZER
-# ================================
+
 tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
 tokenizer.model_max_length = 64
 
 def tokenize(batch):
     return tokenizer(batch["text"], truncation=True, padding="max_length", max_length=64)
 
-# ================================
-# 4. TRAIN CLASSIFIER (Priority / Department)
-# ================================
+
 def train_classifier(task, col, num_labels):
     print(f"\nTraining {task.upper()}...")
 
@@ -80,15 +72,11 @@ def train_classifier(task, col, num_labels):
     tokenizer.save_pretrained(f"models/{task}")
     return f1
 
-# ================================
-# 5. RUN BOTH CLASSIFIERS
-# ================================
+
 f1_priority = train_classifier("priority", "priority", 4)
 f1_dept     = train_classifier("department", "department", 3)
 
-# ================================
-# 6. SLA: Logistic on BERT Features
-# ================================
+
 print("\nTraining SLA...")
 base = AutoModelForSequenceClassification.from_pretrained("distilbert-base-uncased", num_labels=1)
 
@@ -118,11 +106,8 @@ joblib.dump(reg, "models/sla_regressor.pkl")
 base.save_pretrained("models/sla_features")
 tokenizer.save_pretrained("models/sla_features")
 
-# ================================
-# 7. SAVE METRICS
-# ================================
 with open("metrics.txt", "w") as f:
     f.write("Priority F1,Department F1,SLA MAE\n")
     f.write(f"{f1_priority:.3f},{f1_dept:.3f},{mae:.3f}")
 
-print("\nVICTORY! Models ready → streamlit run app.py")
+print("\n Done. Models saved in 'models/' and metrics in 'metrics.txt'.")
