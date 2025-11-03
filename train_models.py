@@ -1,16 +1,16 @@
-# train_models.py — FINAL NOV 03 2025 — NO MORE LONG vs FLOAT
+# train_models.py — FINAL UNBREAKABLE 2025
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments
 from datasets import Dataset
 from sklearn.metrics import f1_score, mean_absolute_error
 from sklearn.linear_model import LogisticRegression
 import pandas as pd, torch, numpy as np, os, joblib
 
-MAX_LEN = 64
-BATCH   = 4
-EPOCHS  = 1
-DEVICE  = "cpu"
+MAX_LEN = 128
+BATCH = 8
+EPOCHS = 2
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Using {DEVICE}")
 
-print("Training on CPU — 90 seconds total")
 os.makedirs("models", exist_ok=True)
 tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
 
@@ -21,28 +21,20 @@ train_df = pd.read_csv("data/processed/train.csv")
 test_df  = pd.read_csv("data/processed/test.csv")
 print(f"Loaded {len(train_df):,} train | {len(test_df):,} test")
 
-def train_classifier(task: str, col: str):
+def train_classifier(task, col):
     print(f"\nTraining {task.upper()}...")
-    tr = Dataset.from_pandas(train_df[["text", col]]).map(tokenize, batched=True)
-    te = Dataset.from_pandas(test_df[["text", col]]).map(tokenize, batched=True)
+    train_ds = Dataset.from_pandas(train_df[["text", col]]).map(tokenize, batched=True)
+    test_ds  = Dataset.from_pandas(test_df[["text", col]]).map(tokenize, batched=True)
 
-    # Encode labels FIRST
-    tr = tr.class_encode_column(col)
-    te = te.class_encode_column(col)
+    train_ds = train_ds.class_encode_column(col).rename_column(col, "labels")
+    test_ds  = test_ds.class_encode_column(col).rename_column(col, "labels")
 
-    # Rename to "labels"
-    tr = tr.rename_column(col, "labels")
-    te = te.rename_column(col, "labels")
-
-    # Set format WITHOUT including labels - let the Trainer handle it
-    tr.set_format("torch", columns=["input_ids", "attention_mask"])
-    te.set_format("torch", columns=["input_ids", "attention_mask"])
-    
-    # Don't convert labels column to torch format - keep them as they are
+    train_ds.set_format("torch")
+    test_ds.set_format("torch")
 
     model = AutoModelForSequenceClassification.from_pretrained(
         "distilbert-base-uncased",
-        num_labels=tr.features["labels"].num_classes
+        num_labels=train_ds.features["labels"].num_classes
     )
 
     args = TrainingArguments(
@@ -53,17 +45,18 @@ def train_classifier(task: str, col: str):
         per_device_eval_batch_size=BATCH,
         num_train_epochs=EPOCHS,
         load_best_model_at_end=True,
-        logging_steps=100,
+        fp16=(DEVICE=="cuda"),
+        logging_steps=50,
         report_to=[],
-        remove_unused_columns=False,  # Keep this False
-        dataloader_pin_memory=False,
+        remove_unused_columns=False,
     )
 
-    trainer = Trainer(model=model, args=args, train_dataset=tr, eval_dataset=te)
+    trainer = Trainer(model=model, args=args, train_dataset=train_ds, eval_dataset=test_ds)
     trainer.train()
 
-    out = trainer.predict(te)
-    f1 = f1_score(out.label_ids, out.predictions.argmax(-1), average="weighted")
+    preds = trainer.predict(test_ds).predictions.argmax(-1)
+    # FIXED LINE:
+    f1 = f1_score(test_ds["labels"], preds, average="weighted")
     print(f"{task.upper()} F1: {f1:.3f}")
 
     model.save_pretrained(f"models/{task}")
@@ -73,8 +66,7 @@ def train_classifier(task: str, col: str):
 f1_p = train_classifier("priority", "priority")
 f1_d = train_classifier("department", "department")
 
-print("\nTraining SLA breach predictor...")
-# For the SLA prediction (regression-like with num_labels=1), we use the base model.
+print("\nTraining SLA...")
 base = AutoModelForSequenceClassification.from_pretrained("distilbert-base-uncased", num_labels=1).to(DEVICE)
 base.eval()
 
@@ -83,16 +75,14 @@ def feats(df):
     f = []
     with torch.no_grad():
         for i in range(0, len(ds), 32):
-            batch = {k: ds[i:i+32][k].to(DEVICE) for k in ["input_ids","attention_mask"]}
-            # Extract the [CLS] token hidden state (the first token)
-            h = base.base_model(**batch).last_hidden_state[:,0,:].cpu().numpy()
-            f.append(h)
+            batch = {k: ds[i:i+32][k].to(DEVICE) for k in ["input_ids", "attention_mask"]}
+            hidden = base.base_model(**batch).last_hidden_state[:,0,:].cpu().numpy()
+            f.append(hidden)
     return np.vstack(f)
 
-X_tr, X_te = feats(train_df), feats(test_df)
-# Logistic Regression for SLA breach (binary classification based on prob > 0.5)
+X_tr = feats(train_df)
+X_te = feats(test_df)
 reg = LogisticRegression(max_iter=1000).fit(X_tr, (train_df["sla_breach_prob"]>0.5).astype(int))
-# Evaluate using MAE on the breach probability
 mae = mean_absolute_error(test_df["sla_breach_prob"], reg.predict_proba(X_te)[:,1])
 print(f"SLA MAE: {mae:.3f}")
 
@@ -104,4 +94,4 @@ with open("metrics.txt","w") as f:
     f.write("Priority F1,Department F1,SLA MAE\n")
     f.write(f"{f1_p:.3f},{f1_d:.3f},{mae:.3f}")
 
-print("\nVICTORY! Run")
+print("\nVICTORY! Check metrics.txt → streamlit run app.py")
