@@ -1,0 +1,23 @@
+# Core Machine Learning and Data Libraries
+torch
+transformers
+datasets
+scikit-learn
+pandas
+numpy
+matplotlib
+seaborn
+shap
+
+# Web App Framework
+streamlit
+
+# Data and Version Control
+dvc
+
+# Containerization (optional)
+docker
+
+# --- Notes ---
+# If you don't have a GPU and need the CPU-only version of PyTorch, install it manually with:
+# pip install torch --index-url https://download.pytorch.org/whl/cpu
