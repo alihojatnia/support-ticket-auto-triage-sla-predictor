@@ -17,7 +17,6 @@ Paste any support ticket → get **instant**:
 - **Balloons** when routed
 
 Built with **DistilBERT** + **Logistic Regression** on CPU.  
-Perfect for interviews, startups, or TeamViewer take-home tasks.
 
 ---
 
