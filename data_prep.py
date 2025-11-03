@@ -1,6 +1,5 @@
 # data_prep.py
-# FINAL BOSS VERSION — works on ANY Zendesk CSV
-# Zero rows? Impossible.
+
 
 import pandas as pd
 import os
@@ -10,21 +9,21 @@ print("Loading raw data...")
 df = pd.read_csv("data/raw/dataset.csv")
 print(f"Raw rows: {len(df)}")
 
-# 1. English only
+
 df = df[df["language"] == "en"].copy()
 print(f"English rows: {len(df)}")
 
-# 2. Sample 5000
+
 df = df.sample(n=5000, random_state=42).reset_index(drop=True)
 
-# 3. Text
+
 df["text"] = (df["subject"].fillna("") + " " + df["body"].fillna("")) \
                .str.lower() \
                .str.replace("\n", " ") \
                .str.replace(r"\s+", " ", regex=True) \
                .str.strip()
 
-# 4. Department
+
 dept_map = {
     "billing": "Billing", "accounts": "AR", "technical": "Tech",
     "support": "Tech", "sales": "AR", "general": "Tech",
@@ -32,7 +31,7 @@ dept_map = {
 }
 df["department"] = df["queue"].astype(str).str.lower().map(dept_map).fillna("Tech")
 
-# 5. BULLET-PROOF PRIORITY (numbers OR keywords)
+
 def parse_priority(x):
     x = str(x).strip().lower()
     if x.isdigit():
@@ -50,14 +49,14 @@ df["priority"] = pd.cut(
     ordered=False
 ).astype(str)
 
-# 6. SLA risk
+
 df["sla_breach_prob"] = 0.1
 df.loc[df["priority"].isin(["P0","P1"]), "sla_breach_prob"] += 0.4
 df.loc[df["text"].str.len() > 400, "sla_breach_prob"] += 0.3
 df.loc[df["text"].str.contains("urgent|critical|down|outage|asap", case=False), "sla_breach_prob"] += 0.2
 df["sla_breach_prob"] = df["sla_breach_prob"].clip(0,1)
 
-# 7. Drop any leftover NaN (should be zero)
+
 df = df[["text","department","priority","sla_breach_prob"]].dropna()
 print(f"Final rows: {len(df)}")
 
@@ -65,11 +64,11 @@ print("\nLabels:")
 print(df["department"].value_counts().head())
 print(df["priority"].value_counts())
 
-# 8. Split
+
 train_df, test_df = train_test_split(df, test_size=0.2, random_state=42,
                                      stratify=df[["department","priority"]])
 
-# 9. Save
+
 os.makedirs("data/processed", exist_ok=True)
 train_df.to_csv("data/processed/train.csv", index=False)
 test_df.to_csv("data/processed/test.csv", index=False)
