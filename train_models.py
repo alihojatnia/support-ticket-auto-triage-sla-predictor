@@ -4,18 +4,17 @@ from sklearn.metrics import f1_score, mean_absolute_error
 from sklearn.linear_model import LogisticRegression
 import pandas as pd, torch, numpy as np, os, joblib
 
-# SETTINGS
-MAX_LEN = 128
-BATCH = 8
-EPOCHS = 2
+MAX_LEN = 64
+BATCH = 4
+EPOCHS = 1
 DEVICE = "cpu"
-print("Training on CPU — 3 minutes total")
+print("Training on CPU ")
 
 os.makedirs("models", exist_ok=True)
 tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
 
-def tokenize(b):
-    return tokenizer(b["text"], truncation=True, padding="max_length", max_length=MAX_LEN, return_tensors="pt")
+def tokenize(batch):
+    return tokenizer(batch["text"], truncation=True, padding="max_length", max_length=MAX_LEN)
 
 train_df = pd.read_csv("data/processed/train.csv")
 test_df  = pd.read_csv("data/processed/test.csv")
@@ -26,16 +25,15 @@ def train_classifier(task, col):
     train_ds = Dataset.from_pandas(train_df[["text", col]]).map(tokenize, batched=True)
     test_ds  = Dataset.from_pandas(test_df[["text", col]]).map(tokenize, batched=True)
 
+    # Encode labels
     train_ds = train_ds.class_encode_column(col).rename_column(col, "labels")
     test_ds  = test_ds.class_encode_column(col).rename_column(col, "labels")
 
-    # FINAL FIX: keep input_ids + correct dtype
+    # CRITICAL: Keep columns + convert labels to Float
     train_ds.set_format("torch", columns=["input_ids", "attention_mask", "labels"])
     test_ds.set_format("torch", columns=["input_ids", "attention_mask", "labels"])
-
-    # Convert labels Long → Float
-    train_ds = train_ds.map(lambda x: {"labels": x["labels"].float()})
-    test_ds  = test_ds.map(lambda x: {"labels": x["labels"].float()})
+    train_ds = train_ds.map(lambda x: {"labels": x["labels"].to(torch.float32)})
+    test_ds  = test_ds.map(lambda x: {"labels": x["labels"].to(torch.float32)})
 
     model = AutoModelForSequenceClassification.from_pretrained(
         "distilbert-base-uncased",
@@ -53,13 +51,16 @@ def train_classifier(task, col):
         logging_steps=50,
         report_to=[],
         remove_unused_columns=False,
+        dataloader_pin_memory=False,
     )
 
     trainer = Trainer(model=model, args=args, train_dataset=train_ds, eval_dataset=test_ds)
     trainer.train()
 
+    # PERFECT F1
     preds = trainer.predict(test_ds).predictions.argmax(-1)
-    f1 = f1_score([l.item() for l in test_ds["labels"]], preds, average="weighted")
+    labels = trainer.predict(test_ds).label_ids
+    f1 = f1_score(labels, preds, average="weighted")
     print(f"{task.upper()} F1: {f1:.3f}")
 
     model.save_pretrained(f"models/{task}")
@@ -69,8 +70,9 @@ def train_classifier(task, col):
 f1_p = train_classifier("priority", "priority")
 f1_d = train_classifier("department", "department")
 
-print("\nTraining SLA...")
-base = AutoModelForSequenceClassification.from_pretrained("distilbert-base-uncased", num_labels=1)
+# SLA
+print("\nTraining SLA breach predictor...")
+base = AutoModelForSequenceClassification.from_pretrained("distilbert-base-uncased", num_labels=1).to(DEVICE)
 base.eval()
 
 def feats(df):
@@ -78,8 +80,7 @@ def feats(df):
     f = []
     with torch.no_grad():
         for i in range(0, len(ds), 32):
-            batch = {k: v.squeeze(1) if k != "labels" else v for k, v in ds[i:i+32].items()}
-            batch = {k: v.to(DEVICE) for k, v in batch.items() if k in ["input_ids", "attention_mask"]}
+            batch = {k: ds[i:i+32][k].to(DEVICE) for k in ["input_ids", "attention_mask"]}
             hidden = base.base_model(**batch).last_hidden_state[:,0,:].cpu().numpy()
             f.append(hidden)
     return np.vstack(f)
@@ -98,4 +99,4 @@ with open("metrics.txt","w") as f:
     f.write("Priority F1,Department F1,SLA MAE\n")
     f.write(f"{f1_p:.3f},{f1_d:.3f},{mae:.3f}")
 
-print("\nDONE! Run: streamlit run app.py")
+print("\nVICTORY! Run")
