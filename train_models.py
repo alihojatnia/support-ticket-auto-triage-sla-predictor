@@ -5,11 +5,11 @@ from sklearn.linear_model import LogisticRegression
 import pandas as pd, torch, numpy as np, os, joblib
 
 MAX_LEN = 64
-BATCH = 4
-EPOCHS = 1
-DEVICE = "cpu"
-print("Training on CPU ")
+BATCH   = 4
+EPOCHS  = 1
+DEVICE  = "cpu"
 
+print("Training on CPU – 90 seconds total")
 os.makedirs("models", exist_ok=True)
 tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
 
@@ -20,24 +20,25 @@ train_df = pd.read_csv("data/processed/train.csv")
 test_df  = pd.read_csv("data/processed/test.csv")
 print(f"Loaded {len(train_df):,} train | {len(test_df):,} test")
 
-def train_classifier(task, col):
+def train_classifier(task: str, col: str):
     print(f"\nTraining {task.upper()}...")
-    train_ds = Dataset.from_pandas(train_df[["text", col]]).map(tokenize, batched=True)
-    test_ds  = Dataset.from_pandas(test_df[["text", col]]).map(tokenize, batched=True)
+    tr = Dataset.from_pandas(train_df[["text", col]]).map(tokenize, batched=True)
+    te = Dataset.from_pandas(test_df[["text", col]]).map(tokenize, batched=True)
 
-    # Encode labels
-    train_ds = train_ds.class_encode_column(col).rename_column(col, "labels")
-    test_ds  = test_ds.class_encode_column(col).rename_column(col, "labels")
+    tr = tr.class_encode_column(col).rename_column(col, "labels")
+    te = te.class_encode_column(col).rename_column(col, "labels")
 
-    # CRITICAL: Keep columns + convert labels to Float
-    train_ds.set_format("torch", columns=["input_ids", "attention_mask", "labels"])
-    test_ds.set_format("torch", columns=["input_ids", "attention_mask", "labels"])
-    train_ds = train_ds.map(lambda x: {"labels": x["labels"].to(torch.float32)})
-    test_ds  = test_ds.map(lambda x: {"labels": x["labels"].to(torch.float32)})
+    # KEEP INPUTS + FORCE LABELS TO FLOAT32
+    tr.set_format("torch", columns=["input_ids","attention_mask","labels"])
+    te.set_format("torch", columns=["input_ids","attention_mask","labels"])
+
+    # ONE-LINE MAGIC FIX
+    tr = tr.map(lambda x: {"labels": x["labels"].to(torch.float32)}, batched=False)
+    te = te.map(lambda x: {"labels": x["labels"].to(torch.float32)}, batched=False)
 
     model = AutoModelForSequenceClassification.from_pretrained(
         "distilbert-base-uncased",
-        num_labels=train_ds.features["labels"].num_classes
+        num_labels=tr.features["labels"].num_classes
     )
 
     args = TrainingArguments(
@@ -48,19 +49,18 @@ def train_classifier(task, col):
         per_device_eval_batch_size=BATCH,
         num_train_epochs=EPOCHS,
         load_best_model_at_end=True,
-        logging_steps=50,
+        logging_steps=100,
         report_to=[],
         remove_unused_columns=False,
         dataloader_pin_memory=False,
     )
 
-    trainer = Trainer(model=model, args=args, train_dataset=train_ds, eval_dataset=test_ds)
+    trainer = Trainer(model=model, args=args, train_dataset=tr, eval_dataset=te)
     trainer.train()
 
-    # PERFECT F1
-    preds = trainer.predict(test_ds).predictions.argmax(-1)
-    labels = trainer.predict(test_ds).label_ids
-    f1 = f1_score(labels, preds, average="weighted")
+    # CLEAN F1
+    out = trainer.predict(te)
+    f1 = f1_score(out.label_ids, out.predictions.argmax(-1), average="weighted")
     print(f"{task.upper()} F1: {f1:.3f}")
 
     model.save_pretrained(f"models/{task}")
@@ -80,13 +80,12 @@ def feats(df):
     f = []
     with torch.no_grad():
         for i in range(0, len(ds), 32):
-            batch = {k: ds[i:i+32][k].to(DEVICE) for k in ["input_ids", "attention_mask"]}
-            hidden = base.base_model(**batch).last_hidden_state[:,0,:].cpu().numpy()
-            f.append(hidden)
+            batch = {k: ds[i:i+32][k].to(DEVICE) for k in ["input_ids","attention_mask"]}
+            h = base.base_model(**batch).last_hidden_state[:,0,:].cpu().numpy()
+            f.append(h)
     return np.vstack(f)
 
-X_tr = feats(train_df)
-X_te = feats(test_df)
+X_tr, X_te = feats(train_df), feats(test_df)
 reg = LogisticRegression(max_iter=1000).fit(X_tr, (train_df["sla_breach_prob"]>0.5).astype(int))
 mae = mean_absolute_error(test_df["sla_breach_prob"], reg.predict_proba(X_te)[:,1])
 print(f"SLA MAE: {mae:.3f}")
@@ -99,4 +98,4 @@ with open("metrics.txt","w") as f:
     f.write("Priority F1,Department F1,SLA MAE\n")
     f.write(f"{f1_p:.3f},{f1_d:.3f},{mae:.3f}")
 
-print("\nVICTORY! Run")
+print("\nVICTORY! Run!")
