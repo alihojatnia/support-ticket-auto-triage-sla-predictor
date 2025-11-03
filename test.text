@@ -11,3 +11,14 @@ git config --global user.email "hojatnia.ali@gmail.com"
 git add .
 git commit -m "FINAL: 3 perfect models + metrics + bullet-proof code"
 git push origin main
+
+
+
+
+# 1. Make data tiny (500 rows)
+head -n 501 data/processed/train.csv > data/processed/train_tiny.csv
+head -n 101 data/processed/test.csv  > data/processed/test_tiny.csv
+mv data/processed/*tiny.csv data/processed/
+
+# 2. Run
+python train_models.py
