@@ -5,9 +5,9 @@ from sklearn.metrics import f1_score, mean_absolute_error
 from sklearn.linear_model import LogisticRegression
 import pandas as pd, torch, numpy as np, os, joblib
 
-MAX_LEN = 128
-BATCH = 8
-EPOCHS = 2
+MAX_LEN = 32
+BATCH = 32
+EPOCHS = 1
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {DEVICE}")
 
@@ -31,6 +31,10 @@ def train_classifier(task, col):
 
     train_ds.set_format("torch")
     test_ds.set_format("torch")
+
+    # ADD THIS LINE right after the two .set_format("torch") lines
+    train_ds = train_ds.with_format("torch", columns=["input_ids", "attention_mask", "labels"], dtype={"labels": torch.long})
+    test_ds  = test_ds.with_format("torch",  columns=["input_ids", "attention_mask", "labels"], dtype={"labels": torch.long})
 
     model = AutoModelForSequenceClassification.from_pretrained(
         "distilbert-base-uncased",
