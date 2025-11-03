@@ -1,3 +1,13 @@
-git add data/processed/ .dvc
-git commit -m "Add data prep and DVC tracking"
-git push
+# 1. Wake up your brain (venv)
+source venv/bin/activate     # Mac/Linux
+# OR
+venv\Scripts\activate        # Windows
+
+# 2. Tell git who you are (only once ever)
+git config --global user.name "alihojatnia"
+git config --global user.email "hojatnia.ali@gmail.com"
+
+# 3. Finish the job
+git add .
+git commit -m "FINAL: 3 perfect models + metrics + bullet-proof code"
+git push origin main
